@@ -1,16 +1,40 @@
 -- Copyright (c) 2013-18 rubenwardy. MIT.
 
 local S = awards.translator
+local GOAL_ID_SEPARATOR = string.char(31)
 
 function awards.register_award(name, def)
 	def.name = name
+	def.goals = def.goals or {}
 
-	-- Add Triggers
+	-- Add legacy trigger as a goal
 	if def.trigger and def.trigger.type then
-		local tdef = awards.registered_triggers[def.trigger.type]
-		assert(tdef, "Trigger not found: " .. def.trigger.type)
-		tdef:on_register(def)
+		table.insert(def.goals,{
+			description = def.description or def.trigger.type,
+			trigger = def.trigger,
+		})
+		def.trigger = nil
 	end
+
+	-- Add goals
+	def.goals.show_unlocked = def.goals.show_unlocked == nil and true or def.goals.show_unlocked
+	def.goals.show_locked = def.goals.show_locked == nil and true or def.goals.show_locked
+	for i = 1, #def.goals do
+		local goal = def.goals[i]
+		local goal_id = name .. GOAL_ID_SEPARATOR .. (goal.id or i)
+		goal.id = goal_id
+		goal.name = goal.id
+		function goal:can_unlock(data)
+			return def:can_unlock(data)
+		end
+		if goal.trigger then
+			local tdef = awards.registered_triggers[goal.trigger.type]
+			assert(tdef, "Trigger not found: " .. goal.trigger.type)
+			tdef:on_register(goal)
+		end
+	end
+
+	def.goals.target = def.goals.target or #def.goals
 
 	function def:can_unlock(data)
 		if not self.requires then
@@ -42,7 +66,7 @@ end
 --awards.unlock(name, award)
 -- name - the name of the player
 -- award - the name of the award to give
-function awards.unlock(name, award)
+function awards.unlock(name, award, goal)
 	-- Ensure the player is online.
 	if not minetest.get_player_by_name(name) then
 		return
@@ -50,17 +74,53 @@ function awards.unlock(name, award)
 
 	-- Access Player Data
 	local data  = awards.player(name)
-	local awdef = awards.registered_awards[award]
-	assert(awdef, "Unable to unlock an award which doesn't exist!")
 
-	if data.disabled or
-			(data.unlocked[award] and data.unlocked[award] == award) then
+	-- Do nothing if awards are disabled for the player
+	if data.disabled then
 		return
 	end
+
+	-- Check for full award+goal string submitted by triggers
+	local separator_pos = award:find(GOAL_ID_SEPARATOR)
+	if separator_pos then
+		goal = award:sub(separator_pos + 1,-1)
+		award = award:sub(1,separator_pos - 1)
+	end
+
+	-- Generate full goal string if we're unlocking a goal
+	if goal then
+		goal = award .. GOAL_ID_SEPARATOR .. goal
+	end
+
+	local awdef = awards.registered_awards[award]
+	assert(awdef, "Unable to unlock an award which doesn't exist!")
 
 	if not awdef:can_unlock(data) then
 		minetest.log("warning", "can_unlock returned false in unlock of " ..
 				award .. " for " .. name)
+		return
+	end
+
+	-- Complete goal and proceed with award if target goals are complete
+	if goal then
+		if data.unlocked[goal] then
+			return
+		end
+		data.unlocked[goal] = goal
+		awards.save()
+		local goals_unlocked = 0
+		for _,goal in ipairs(awdef.goals) do
+			if data.unlocked[goal.id] then
+				goals_unlocked = goals_unlocked + 1
+			end
+		end
+		if goals_unlocked < awdef.goals.target then
+			return
+		end
+	end
+
+	-- Return if award is already unlocked
+	if data.unlocked[award] then
 		return
 	end
 
@@ -194,17 +254,31 @@ function awards.get_award_states(name)
 			local def = awards.registered_awards[awardname]
 			if def then
 				hash_is_unlocked[awardname] = true
-				local score = -100000
-
 				local difficulty = def.difficulty or 1
-				if def.trigger and def.trigger.target then
-					difficulty = difficulty * def.trigger.target
-				end
-				score = score + difficulty
+				local score = -100000 + difficulty
 
 				retval[#retval + 1] = {
 					name     = awardname,
 					def      = def,
+					goals    = (function()
+						local goals = {
+							show_locked = def.goals.show_locked,
+							show_unlocked = def.goals.show_unlocked,
+						}
+						if def.goals then
+							for i = 1, #def.goals do
+								local goal = def.goals[i]
+								local progress = goal.get_progress and goal:get_progress(data) or { current = 0, target = 1 }
+								score = score + (difficulty * progress.target)
+								table.insert(goals,{
+									def = goal,
+									progress = progress,
+									unlocked = data.unlocked[goal.id] and true or false,
+								})
+							end
+						end
+						return #goals > 0 and goals or nil
+					end)(),
 					unlocked = true,
 					started  = true,
 					score    = score,
@@ -217,30 +291,45 @@ function awards.get_award_states(name)
 	-- Add all locked awards
 	for _, def in pairs(awards.registered_awards) do
 		if not hash_is_unlocked[def.name] and def:can_unlock(data) then
-			local progress = def.get_progress and def:get_progress(data)
+			local total_progress = { current = 0, target = 0 }
 			local started = false
 			local score = def.difficulty or 1
 			if def.secret then
 				score = 1000000
-			elseif def.trigger and def.trigger.target and progress then
-				local perc = progress.current / progress.target
-				score = score * (1 - perc) * def.trigger.target
-				if perc < 0.001 then
-					score = score + 100
-				else
-					started = true
-				end
-			else
-				score = 100
 			end
 
 			retval[#retval + 1] = {
 				name     = def.name,
 				def      = def,
+				goals    = (function()
+					local goals = {
+						show_locked = def.goals.show_locked,
+						show_unlocked = def.goals.show_unlocked,
+					}
+					if def.goals then
+						for i = 1, #def.goals do
+							local goal = def.goals[i]
+							local progress = goal.get_progress and goal:get_progress(data) or { current = data.unlocked[goal.id] and 1 or 0, target = 1 }
+							total_progress.current = total_progress.current + progress.current
+							total_progress.target = total_progress.target + progress.target
+							local perc = progress.current / progress.target
+							score = score * (1 - perc) * progress.target
+							if perc > 0 then
+								started = true
+							end
+							table.insert(goals,{
+								def = goal,
+								progress = progress,
+								unlocked = data.unlocked[goal.id] and true or false,
+							})
+						end
+					end
+					return #goals > 0 and goals or nil
+				end)(),
 				unlocked = false,
 				started  = started,
 				score    = score,
-				progress = progress,
+				progress = total_progress,
 			}
 		end
 	end

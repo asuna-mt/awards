@@ -109,4 +109,5 @@ end
 
 function awards.clear_player(name)
 	__player_data[name] = {}
+	awards.save()
 end

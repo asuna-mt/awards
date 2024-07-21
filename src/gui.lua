@@ -48,29 +48,43 @@ function awards.get_formspec(name, to, sid)
 			formspec = formspec .. "image[0.45,0;3.5,3.5;" .. sdef.icon .. "]"  -- adjusted values from 0.6,0;3,3
 		end
 
-		if sitem.progress then
-			local barwidth = 3.95
-			local perc = sitem.progress.current / sitem.progress.target
-			local label = sitem.progress.label
-			if perc > 1 then
-				perc = 1
+		-- List out individual goals
+		if sitem.goals then
+			local goal_list = "textlist[-0.05,4.7;3.9,4;goals;"
+			local has_visible_goals = false
+			for i = 1, #sitem.goals do
+				local goal = sitem.goals[i]
+				local goal_status
+				local goal_progress = goal.progress and (" (" .. goal.progress.current .. "/" .. goal.progress.target .. ")") or ""
+				if goal.unlocked then
+					if not sitem.goals.show_unlocked then
+						goto continue
+					else
+						goal_status = "#25fc34✓ "
+					end
+				else
+					if not sitem.goals.show_locked then
+						goto continue
+					else
+						goal_status = goal.progress and (goal.progress.current == 0 and "#aaaaaa☐ " or "#ffffff☐ ") or "#aaaaaa☐ "
+					end
+				end
+				goal_list = goal_list .. goal_status .. minetest.formspec_escape(goal.def.description:split("\n")[1]) .. goal_progress .. ","
+				has_visible_goals = true
+				::continue::
 			end
-			formspec = formspec .. "background[0,8.24;" .. barwidth ..",0.4;awards_progress_gray.png;false]"
-			formspec = formspec .. "background[0,8.24;" .. (barwidth * perc) ..",0.4;awards_progress_green.png;false]"
-			if label then
-				formspec = formspec .. "label[1.6,8.15;" .. minetest.formspec_escape(label) .. "]"
-			end
+			formspec = formspec .. (has_visible_goals and goal_list:sub(1,-2) or "") .. "]"
 		end
 
 		if sdef and sdef.description then
-			formspec = formspec .. "box[-0.05,3.75;3.9,4.2;#000]"
-			formspec = formspec	.. "textarea[0.25,3.75;3.9,4.2;;" ..
+			formspec = formspec .. "box[-0.05,3.75;3.9,0.85;#000]"
+			formspec = formspec	.. "textarea[0.25,3.75;3.9,0.85;;" ..
 					minetest.formspec_escape(sdef.description) .. ";]"
 		end
 	end
 
 	-- Create list box
-	formspec = formspec .. "textlist[4,0;3.8,8.6;awards;"
+	formspec = formspec .. "textlist[4,0;3.8,8.7;awards;"
 	local first = true
 	for _, award in pairs(awards_list) do
 		local def = award.def
@@ -89,11 +103,11 @@ function awards.get_formspec(name, to, sid)
 				end
 				-- title = title .. " [" .. award.score .. "]"
 				if award.unlocked then
-					formspec = formspec .. minetest.formspec_escape(title)
+					formspec = formspec .. "#25fc34" .. minetest.formspec_escape(title)
 				elseif award.started then
-					formspec = formspec .. "#c0c0c0".. minetest.formspec_escape(title)
+					formspec = formspec .. "#ffffff".. minetest.formspec_escape(title)
 				else
-					formspec = formspec .. "#a0a0a0".. minetest.formspec_escape(title)
+					formspec = formspec .. "#aaaaaa".. minetest.formspec_escape(title)
 				end
 			end
 		end
