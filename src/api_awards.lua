@@ -268,8 +268,8 @@ function awards.get_award_states(name)
 						if def.goals then
 							for i = 1, #def.goals do
 								local goal = def.goals[i]
-								local progress = goal.get_progress and goal:get_progress(data) or { current = 0, target = 1 }
-								score = score + (difficulty * progress.target)
+								local progress = goal.get_progress and goal:get_progress(data)
+								score = score + (difficulty * (progress and progress.target or 1))
 								table.insert(goals,{
 									def = goal,
 									progress = progress,
