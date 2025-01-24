@@ -48,15 +48,18 @@ function awards.get_formspec(name, to, sid)
 			formspec = formspec .. "image[0.45,0;3.5,3.5;" .. minetest.formspec_escape(sdef.icon) .. "]"  -- adjusted values from 0.6,0;3,3
 		end
 
-		-- List out individual goals
+		-- List out goal progress
 		if sitem.goals then
-			local goal_list = "textlist[-0.05,4.7;3.9,4;goals;"
+			local goal_list = "textlist[-0.05,5;3.9,3.7;goals;"
 			local has_visible_goals = false
+			local goals_target = sdef.goals.target
+			local goals_unlocked = 0
 			for i = 1, #sitem.goals do
 				local goal = sitem.goals[i]
 				local goal_status
 				local goal_progress = goal.progress and (" (" .. goal.progress.current .. "/" .. goal.progress.target .. ")") or ""
 				if goal.unlocked then
+					goals_unlocked = goals_unlocked + 1
 					if not sitem.goals.show_unlocked then
 						goto continue
 					else
@@ -73,7 +76,18 @@ function awards.get_formspec(name, to, sid)
 				has_visible_goals = true
 				::continue::
 			end
-			formspec = formspec .. (has_visible_goals and goal_list:sub(1,-2) or "") .. "]"
+
+			-- Goal progress bar
+			local goal_progress_bar = "box[-0.05,4.65;3.9,0.3;#191919]"
+			local gpb_width = 3.9 * math.min(goals_unlocked / goals_target,1.0)
+			if gpb_width > 0 then
+				goal_progress_bar = goal_progress_bar .. "box[-0.05,4.65;" .. gpb_width .. ",0.3;#25fc34]"
+			end
+			--goal_progress_bar = goal_progress_bar .. "box[-0.05,5.05;3.9,0.05;#000000]"
+			goal_progress_bar = goal_progress_bar .. "hypertext[0.295,4.7;3.9,0.4;;<global halign=center>" .. goals_unlocked .. " / " .. goals_target .. "]"
+
+			-- Append formspec
+			formspec = formspec .. goal_progress_bar .. (has_visible_goals and goal_list:sub(1,-2) or "") .. "]"
 		end
 
 		if sdef and sdef.description then

@@ -14,23 +14,38 @@ awards = {
 }
 
 -- Load files
-local modpath = minetest.get_modpath(minetest.get_current_modname()).."/src"
-dofile(modpath.."/data.lua")
-dofile(modpath.."/api_awards.lua")
-dofile(modpath.."/api_triggers.lua")
-dofile(modpath.."/chat_commands.lua")
-dofile(modpath.."/gui.lua")
-dofile(modpath.."/triggers.lua")
+if asuna.content.wayfarer.awards then
+	local modpath = minetest.get_modpath(minetest.get_current_modname()).."/src"
+	dofile(modpath.."/data.lua")
+	dofile(modpath.."/api_awards.lua")
+	dofile(modpath.."/api_triggers.lua")
+	dofile(modpath.."/chat_commands.lua")
+	dofile(modpath.."/gui.lua")
+	dofile(modpath.."/triggers.lua")
 
-awards.load()
-minetest.register_on_shutdown(awards.save)
+	awards.load()
+	minetest.register_on_shutdown(awards.save)
 
-local function check_save()
-	awards.save()
-	minetest.after(18, check_save)
+	local function check_save()
+		awards.save()
+		minetest.after(18, check_save)
+	end
+	minetest.after(8 * math.random() + 10, check_save)
+else
+	-- Dummy out API functions
+	local function noop() end
+	awards.unlock = noop
+	awards.get_formspec = noop
+	awards.show_to = noop
+	awards.register_on_dig = noop
+	awards.register_on_place = noop
+	awards.register_on_death = noop
+	awards.register_on_chat = noop
+	awards.register_on_join = noop
+	awards.register_on_craft = noop
+	awards.registered_awards = noop
+	awards.register_award = noop
 end
-minetest.after(8 * math.random() + 10, check_save)
-
 
 -- Backwards compatibility
 awards.give_achievement     = awards.unlock

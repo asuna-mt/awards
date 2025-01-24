@@ -258,6 +258,10 @@ function awards.remove(name, award)
 	awards.save()
 end
 
+local function sorter(a,b)
+	return a.score < b.score
+end
+
 function awards.get_award_states(name)
 	local hash_is_unlocked = {}
 	local retval = {}
@@ -270,7 +274,7 @@ function awards.get_award_states(name)
 			if def then
 				hash_is_unlocked[awardname] = true
 				local difficulty = def.difficulty or 1
-				local score = -100000 + difficulty
+				local score = -1000000 + difficulty
 
 				retval[#retval + 1] = {
 					name     = awardname,
@@ -284,7 +288,6 @@ function awards.get_award_states(name)
 							for i = 1, #def.goals do
 								local goal = def.goals[i]
 								local progress = goal.get_progress and goal:get_progress(data)
-								score = score + (difficulty * (progress and progress.target or 1))
 								table.insert(goals,{
 									def = goal,
 									progress = progress,
@@ -304,16 +307,19 @@ function awards.get_award_states(name)
 	end
 
 	-- Add all locked awards
+	local in_progress = {}
+	local not_started = {}
 	for _, def in pairs(awards.registered_awards) do
 		if not hash_is_unlocked[def.name] and def:can_unlock(data) then
 			local total_progress = { current = 0, target = 0 }
 			local started = false
-			local score = def.difficulty or 1
+			local difficulty = def.difficulty or 1
+			local score = difficulty
 			if def.secret then
 				score = 1000000
 			end
 
-			retval[#retval + 1] = {
+			local award = {
 				name     = def.name,
 				def      = def,
 				goals    = (function()
@@ -322,13 +328,13 @@ function awards.get_award_states(name)
 						show_unlocked = def.goals.show_unlocked,
 					}
 					if def.goals then
+						local target = def.goals.target
 						for i = 1, #def.goals do
 							local goal = def.goals[i]
 							local progress = goal.get_progress and goal:get_progress(data) or { current = data.unlocked[goal.id] and 1 or 0, target = 1 }
 							total_progress.current = total_progress.current + progress.current
 							total_progress.target = total_progress.target + progress.target
 							local perc = progress.current / progress.target
-							score = score * (1 - perc) * progress.target
 							if perc > 0 then
 								started = true
 							end
@@ -346,11 +352,28 @@ function awards.get_award_states(name)
 				score    = score,
 				progress = total_progress,
 			}
+
+			if award.started then
+				table.insert(in_progress,award)
+			else
+				table.insert(not_started,award)
+			end
 		end
 	end
 
-	table.sort(retval, function(a, b)
-		return a.score < b.score
-	end)
+	-- Sort award categories
+	table.sort(retval,sorter)
+	table.sort(in_progress,sorter)
+	table.sort(not_started,sorter)
+
+	-- Append categories to the return value
+	for _,award in ipairs(in_progress) do
+		table.insert(retval,award)
+	end
+	for _,award in ipairs(not_started) do
+		table.insert(retval,award)
+	end
+
+	-- Return complete list of awards
 	return retval
 end
