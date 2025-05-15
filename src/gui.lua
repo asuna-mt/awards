@@ -54,28 +54,27 @@ function awards.get_formspec(name, to, sid)
 			local has_visible_goals = false
 			local goals_target = sdef.goals.target
 			local goals_unlocked = 0
-			for i = 1, #sitem.goals do
+			for i = 1, #sitem.goals do repeat
 				local goal = sitem.goals[i]
 				local goal_status
 				local goal_progress = goal.progress and (" (" .. goal.progress.current .. "/" .. goal.progress.target .. ")") or ""
 				if goal.unlocked then
 					goals_unlocked = goals_unlocked + 1
 					if not sitem.goals.show_unlocked then
-						goto continue
+						break
 					else
 						goal_status = "#25fc34✓ "
 					end
 				else
 					if not sitem.goals.show_locked then
-						goto continue
+						break
 					else
 						goal_status = goal.progress and (goal.progress.current == 0 and "#aaaaaa☐ " or "#ffffff☐ ") or "#aaaaaa☐ "
 					end
 				end
 				goal_list = goal_list .. goal_status .. minetest.formspec_escape(goal.def.description:split("\n")[1]) .. goal_progress .. ","
 				has_visible_goals = true
-				::continue::
-			end
+			until true end
 
 			-- Goal progress bar
 			local goal_progress_bar = "box[-0.05,4.65;3.9,0.3;#191919]"
